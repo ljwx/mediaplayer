@@ -3,6 +3,7 @@ package com.jdcr.jdcrmediaplayer
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.net.Uri
 import android.os.Looper
 import androidx.annotation.MainThread
 import com.google.android.exoplayer2.ExoPlayer
@@ -164,7 +165,8 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
     }
 
     protected fun source2Item(source: JdcrPlayerSource): MediaItem {
-        return MediaItem.Builder().setUri(source.uri).setMediaId(source.id).setTag(source).build()
+        val safeUri = Uri.parse(source.uri).buildUpon().build()
+        return MediaItem.Builder().setUri(safeUri).setMediaId(source.id).setTag(source).build()
     }
 
     private inline fun <T> runMain(crossinline block: () -> T): T {
