@@ -35,8 +35,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import androidx.core.net.toUri
+import com.jdcr.jdcrmediaplayer.config.JdcrPlayerConfig
 
-abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : JdcrPlayer {
+abstract class JdcrPlayerCore(
+    context: Context,
+    playerView: JdcrPlayerView,
+    private val config: JdcrPlayerConfig
+) : JdcrPlayer {
 
     private val coroutineExceptionHandler = CoroutineExceptionHandler { _, e ->
         e.printStackTrace()
@@ -48,7 +53,9 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
 
     @SuppressLint("UnsafeOptInUsageError")
     private val _exoPlayer: ExoPlayer = ExoPlayer.Builder(context).apply {
-        getCacheConfig(context)?.let { setMediaSourceFactory(it.factory) }
+        config.localCache?.apply {
+            setMediaSourceFactory(getCacheConfig(context, this, config.errorPolicy).factory)
+        }
     }.build().also { player ->
         playerView.player = player
         playerView.controllerAutoShow = false
@@ -158,9 +165,11 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
         progressJob = _scope.launch(Dispatchers.Main) {
             while (isActive) {
                 if (_exoPlayer.isPlaying) {
-                    _progressFlow.tryEmit(_exoPlayer.currentPosition)
+                    val position = _exoPlayer.currentPosition
+                    _progressFlow.tryEmit(position)
+                    JdcrPlayerLog.v("播放进度:$position")
                 }
-                delay(300)
+                delay(config.progressIntervalMs)
             }
         }
     }
@@ -422,7 +431,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
 
     @MainThread
     override fun onDestroy() {
-        JdcrPlayerLog.i("执行销毁")
+        JdcrPlayerLog.w("执行销毁")
         release()
         rootJob.cancel()
     }

@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayerView
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayerSource
 import com.jdcr.jdcrmediaplayer.ui.theme.JdcrMediaPlayerTheme
+import com.jdcr.jdcrmediaplayer.util.JdcrPlayerLog
 import kotlinx.coroutines.delay
 
 private val default =
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        JdcrPlayerLog.enable(true, cacheDir.absolutePath+"/log.txt")
         setContent {
             JdcrMediaPlayerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->

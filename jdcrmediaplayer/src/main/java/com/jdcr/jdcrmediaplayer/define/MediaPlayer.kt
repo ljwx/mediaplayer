@@ -2,12 +2,18 @@ package com.jdcr.jdcrmediaplayer.define
 
 import android.content.Context
 import com.jdcr.jdcrmediaplayer.cache.JdcrCacheConfig
+import com.jdcr.jdcrmediaplayer.config.ErrorPolicy
+import com.jdcr.jdcrmediaplayer.config.LocalCache
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 interface MediaPlayerCore {
 
-    fun getCacheConfig(context: Context): JdcrCacheConfig?
+    fun getCacheConfig(
+        context: Context,
+        cache: LocalCache,
+        errorPolicy: ErrorPolicy?
+    ): JdcrCacheConfig
 
     fun addMediaSource(mediaSource: JdcrPlayerSource, index: Int? = null)
 

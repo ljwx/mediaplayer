@@ -2,15 +2,28 @@ package com.jdcr.jdcrmediaplayer
 
 import android.content.Context
 import com.jdcr.jdcrmediaplayer.cache.JdcrCacheConfig
+import com.jdcr.jdcrmediaplayer.config.ErrorPolicy
+import com.jdcr.jdcrmediaplayer.config.JdcrPlayerConfig
+import com.jdcr.jdcrmediaplayer.config.LocalCache
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayerSource
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayerView
 import com.jdcr.jdcrmediaplayer.util.JdcrPlayerUtils
 
-class JdcrMediaPlayer(context: Context, playerView: JdcrPlayerView) :
-    JdcrPlayerCore(context, playerView) {
+class JdcrMediaPlayer(
+    context: Context,
+    playerView: JdcrPlayerView,
+    private val config: JdcrPlayerConfig = JdcrPlayerConfig.DEFAULT
+) :
+    JdcrPlayerCore(context, playerView, config) {
 
-    override fun getCacheConfig(ctx: Context): JdcrCacheConfig? {
-        return JdcrCacheConfig(JdcrPlayerUtils.getDefaultSourceFactory(ctx))
+    override fun getCacheConfig(
+        ctx: Context,
+        cache: LocalCache,
+        errorPolicy: ErrorPolicy?
+    ): JdcrCacheConfig {
+        return JdcrCacheConfig(
+            JdcrPlayerUtils.getDefaultSourceFactory(ctx, cache, errorPolicy)
+        )
     }
 
     override fun setPlayList(
