@@ -18,7 +18,8 @@ import java.net.UnknownHostException
 
 object JdcrPlayerUtils {
 
-    private val defaultSize = 500L * 1024 * 1024 //500M
+    private val sizeMB = 1024 * 1024
+    private val defaultMB = 500L //500M
     private val defaultPath = "exoplayer_cache"
 
     @Volatile
@@ -30,10 +31,11 @@ object JdcrPlayerUtils {
             synchronized(this) {
                 if (defaultCache == null) {
                     val cacheDir = File(context.applicationContext.cacheDir, defaultPath)
-                    val cacheSize = defaultSize
+                    val cacheSize = defaultMB * sizeMB
                     val cacheEvictor = LeastRecentlyUsedCacheEvictor(cacheSize)
                     val databaseProvider = StandaloneDatabaseProvider(context)
                     defaultCache = SimpleCache(cacheDir, cacheEvictor, databaseProvider)
+                    JdcrPlayerLog.d("默认缓存,路径:$cacheDir,大小MB:$cacheSize")
                 }
             }
         }
@@ -57,7 +59,7 @@ object JdcrPlayerUtils {
             // 拦截重试延迟时间
             override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
                 val e = loadErrorInfo.exception
-                
+
                 // 1. 如果是彻底断网 (UnknownHostException) -> 立刻抛出，不重试
                 val isOffline = e is UnknownHostException || e.cause is UnknownHostException
                 if (isOffline) {
@@ -75,14 +77,15 @@ object JdcrPlayerUtils {
                 // 对于其他错误，走默认逻辑
                 return super.getRetryDelayMsFor(loadErrorInfo)
             }
-            
+
             // 决定最多重试多少次
             override fun getMinimumLoadableRetryCount(dataType: Int): Int {
                 // 弱网情况下，最多重试 3 次 (这是 ExoPlayer 的默认经典配置)
-                return 3 
+                return 3
             }
         }
 
+        JdcrPlayerLog.i("返回默认缓存配置")
         return DefaultMediaSourceFactory(cacheDataSourceFactory).setLoadErrorHandlingPolicy(
             errorHandlingPolicy
         )

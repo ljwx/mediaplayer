@@ -34,12 +34,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import androidx.core.net.toUri
 
 abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : JdcrPlayer {
 
     private val coroutineExceptionHandler = CoroutineExceptionHandler { _, e ->
         e.printStackTrace()
-        JdcrPlayerLog.d("MediaPlayer协程收到异常：${e}")
+        JdcrPlayerLog.e("MediaPlayer协程收到异常", e)
     }
     private val rootJob = SupervisorJob()
     private var _scope: CoroutineScope =
@@ -76,7 +77,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
 
             override fun onRenderedFirstFrame() {
                 super.onRenderedFirstFrame()
-                JdcrPlayerLog.d("首帧已渲染:" + getCurrentResouceMessage())
+                JdcrPlayerLog.i("首帧已渲染:" + getCurrentResouceMessage())
                 autoPlayFirstFrame()
             }
 
@@ -91,7 +92,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
 
                     else -> JdcrPlayerState.IDLE(getCurrentMediaSource())
                 }
-                JdcrPlayerLog.d("播放状态变更:" + newState.desc + "," + getCurrentCountMessage())
+                JdcrPlayerLog.i("播放状态变更:" + newState.desc + "," + getCurrentCountMessage())
                 _stateFlow.tryEmit(newState)
             }
 
@@ -126,13 +127,13 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
                     else -> JdcrPlayerError.UnknowError(error.errorCode, "未知错误")
 
                 }
-                JdcrPlayerLog.d("播放出错:" + playbackError.errorMessage + "," + getCurrentResouceMessage())
+                JdcrPlayerLog.w("播放出错:" + getCurrentResouceMessage(), playbackError)
                 _stateFlow.tryEmit(JdcrPlayerState.ERROR(getCurrentMediaSource(), playbackError))
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 mediaItem?.let {
-                    JdcrPlayerLog.d("切换到新视频:" + getCurrentCountMessage())
+                    JdcrPlayerLog.i("切换到新视频:" + getCurrentCountMessage())
                     _currentIndexFlow.tryEmit(_exoPlayer.currentMediaItemIndex)
                 }
             }
@@ -159,13 +160,13 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
                 if (_exoPlayer.isPlaying) {
                     _progressFlow.tryEmit(_exoPlayer.currentPosition)
                 }
-                delay(500)
+                delay(300)
             }
         }
     }
 
     protected fun source2Item(source: JdcrPlayerSource): MediaItem {
-        val safeUri = Uri.parse(source.uri).buildUpon().build()
+        val safeUri = source.uri.toUri().buildUpon().build()
         return MediaItem.Builder().setUri(safeUri).setMediaId(source.id).setTag(source).build()
     }
 
@@ -185,10 +186,10 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
     ) {
         _scope.launch(Dispatchers.Main.immediate) {
             if (index == null) {
-                JdcrPlayerLog.d("追加媒体文件:$mediaSource")
+                JdcrPlayerLog.i("追加媒体文件:$mediaSource")
                 getPlayer().addMediaItem(source2Item(mediaSource))
             } else {
-                JdcrPlayerLog.d("插入媒体文件:$mediaSource")
+                JdcrPlayerLog.i("插入媒体文件:$mediaSource")
                 getPlayer().addMediaItem(index, source2Item(mediaSource))
             }
         }
@@ -196,7 +197,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
 
     override fun setCurrentSource(source: JdcrPlayerSource) {
         _scope.launch(Dispatchers.Main.immediate) {
-            JdcrPlayerLog.d("切换媒体文件:$source")
+            JdcrPlayerLog.i("切换媒体文件:$source")
             val mediaItem = source2Item(source)
             _exoPlayer.setMediaItem(mediaItem)
         }
@@ -337,7 +338,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
             getPlayer().apply {
                 for (i in mediaItemCount - 1 downTo 0) {
                     if (mediaSource.id == getMediaItemAt(i).mediaId) {
-                        JdcrPlayerLog.d("player移除item:$mediaSource")
+                        JdcrPlayerLog.i("player移除item:$mediaSource")
                         removeMediaItem(i)
                     }
                 }
@@ -372,7 +373,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
             val item = getCurrentMediaSource()
             item?.autoPlayParams?.apply {
                 if (autoRemove == true) {
-                    JdcrPlayerLog.d("自动移除当前播放完成的媒体资源:" + getCurrentResouceMessage())
+                    JdcrPlayerLog.i("自动移除当前播放完成的媒体资源:" + getCurrentResouceMessage())
                     removeMediaSourceInternal(item)
                 }
             }
@@ -384,7 +385,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
             if (_exoPlayer.mediaItemCount == 1) {
                 getCurrentMediaSource()?.autoPlayParams?.apply {
                     if (isDefault == true || loop == true) {
-                        JdcrPlayerLog.d("自动重播默认视频:" + getCurrentResouceMessage())
+                        JdcrPlayerLog.i("自动重播默认视频:" + getCurrentResouceMessage())
                         _exoPlayer.seekTo(0)
                         _exoPlayer.play()
                     }
@@ -396,7 +397,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
     private fun autoPlayFirstFrame() {
         getCurrentMediaSource()?.autoPlayParams?.apply {
             if (autoPlayFirstFrame == true) {
-                JdcrPlayerLog.d("首帧渲染完成,自动播放:" + getCurrentResouceMessage())
+                JdcrPlayerLog.i("首帧渲染完成,自动播放:" + getCurrentResouceMessage())
                 start()
             }
         }
@@ -412,7 +413,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
 
     @MainThread
     override fun release() {
-        JdcrPlayerLog.d("释放资源")
+        JdcrPlayerLog.i("释放资源")
         rootJob.cancelChildren()
         progressJob?.cancel()
         progressJob = null
@@ -421,7 +422,7 @@ abstract class JdcrPlayerCore(context: Context, playerView: JdcrPlayerView) : Jd
 
     @MainThread
     override fun onDestroy() {
-        JdcrPlayerLog.d("执行销毁")
+        JdcrPlayerLog.i("执行销毁")
         release()
         rootJob.cancel()
     }

@@ -1,13 +1,11 @@
 package com.jdcr.jdcrmediaplayer.util
 
-import android.util.Log
+import com.jdcr.jdcrlog.JdcrLogBase
 
-object JdcrPlayerLog {
+object JdcrPlayerLog : JdcrLogBase() {
 
-    private val TAG = "bmp_"
-
-    fun d(content: String) {
-        Log.d(TAG, content)
+    init {
+        setDefaultTag("player", "exo")
     }
 
 }
