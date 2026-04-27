@@ -52,23 +52,29 @@ abstract class JdcrPlayerCore(
         CoroutineScope(Dispatchers.Main.immediate + rootJob + coroutineExceptionHandler)
 
     @SuppressLint("UnsafeOptInUsageError")
-    private val _exoPlayer: ExoPlayer = ExoPlayer.Builder(context).apply {
-        config.localCache?.apply {
-            setMediaSourceFactory(getCacheConfig(context, this, config.errorPolicy).factory)
+    private val _exoPlayer: ExoPlayer =
+        ExoPlayer.Builder(context).setAudioAttributes(config.audioAttributes, true).apply {
+            config.localCache?.apply {
+                setMediaSourceFactory(getCacheConfig(context, this, config.errorPolicy).factory)
+            }
+        }.build().also { player ->
+            playerView.player = player
+            playerView.controllerAutoShow = false
+            // 不要让 PlayerView 在切换时刷黑底
+            playerView.setShutterBackgroundColor(Color.TRANSPARENT)
+            playerView.setKeepContentOnPlayerReset(true)
+            playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
         }
-    }.build().also { player ->
-        playerView.player = player
-        playerView.controllerAutoShow = false
-        // 不要让 PlayerView 在切换时刷黑底
-        playerView.setShutterBackgroundColor(Color.TRANSPARENT)
-        playerView.setKeepContentOnPlayerReset(true)
-        playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-    }
 
     private val _stateFlow = MutableStateFlow<JdcrPlayerState>(JdcrPlayerState.IDLE(null))
     private val _progressFlow = MutableStateFlow(0L)
     private var progressJob: Job? = null
     private val _currentIndexFlow = MutableStateFlow(0)
+
+    private var lastPlayWhenReadyChangeReason: Int =
+        Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST
+
+    private var lastPauseEmitted: JdcrPlayerState.PAUSE? = null
 
     init {
         setupPlayerListener()
@@ -77,6 +83,36 @@ abstract class JdcrPlayerCore(
 
     protected fun getPlayer(): ExoPlayer {
         return _exoPlayer
+    }
+
+    private fun buildPauseState(): JdcrPlayerState.PAUSE {
+        val item = getCurrentMediaSource()
+        return when {
+            _exoPlayer.playbackSuppressionReason ==
+                Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS ->
+                JdcrPlayerState.PAUSE.LOSE_FOCUS_TEMP(item)
+
+            lastPlayWhenReadyChangeReason ==
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS &&
+                !_exoPlayer.playWhenReady ->
+                JdcrPlayerState.PAUSE.LOSE_FOCUS_LONG(item)
+
+            lastPlayWhenReadyChangeReason ==
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ->
+                JdcrPlayerState.PAUSE.AUDIO_BECOMING_NOISY(item)
+
+            else -> JdcrPlayerState.PAUSE.Normal(item)
+        }
+    }
+
+    private fun refreshPauseWithCurrentSource(p: JdcrPlayerState.PAUSE): JdcrPlayerState.PAUSE {
+        val item = getCurrentMediaSource()
+        return when (p) {
+            is JdcrPlayerState.PAUSE.Normal -> JdcrPlayerState.PAUSE.Normal(item)
+            is JdcrPlayerState.PAUSE.LOSE_FOCUS_TEMP -> JdcrPlayerState.PAUSE.LOSE_FOCUS_TEMP(item)
+            is JdcrPlayerState.PAUSE.LOSE_FOCUS_LONG -> JdcrPlayerState.PAUSE.LOSE_FOCUS_LONG(item)
+            is JdcrPlayerState.PAUSE.AUDIO_BECOMING_NOISY -> JdcrPlayerState.PAUSE.AUDIO_BECOMING_NOISY(item)
+        }
     }
 
     private fun setupPlayerListener() {
@@ -91,13 +127,33 @@ abstract class JdcrPlayerCore(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val newState = when (playbackState) {
                     Player.STATE_BUFFERING -> JdcrPlayerState.PREPARING(getCurrentMediaSource())
-                    Player.STATE_READY -> JdcrPlayerState.READY(getCurrentMediaSource())
+                    Player.STATE_READY -> {
+                        when {
+                            _exoPlayer.isPlaying -> {
+                                lastPauseEmitted = null
+                                JdcrPlayerState.PLAYING(getCurrentMediaSource())
+                            }
+
+                            lastPauseEmitted != null && !_exoPlayer.isPlaying -> {
+                                val refreshed = refreshPauseWithCurrentSource(lastPauseEmitted!!)
+                                lastPauseEmitted = refreshed
+                                refreshed
+                            }
+
+                            else -> JdcrPlayerState.READY(getCurrentMediaSource())
+                        }
+                    }
+
                     Player.STATE_ENDED -> {
+                        lastPauseEmitted = null
                         handlePlayEnded()
                         JdcrPlayerState.ENDED(getCurrentMediaSource())
                     }
 
-                    else -> JdcrPlayerState.IDLE(getCurrentMediaSource())
+                    else -> {
+                        lastPauseEmitted = null
+                        JdcrPlayerState.IDLE(getCurrentMediaSource())
+                    }
                 }
                 JdcrPlayerLog.i("播放状态变更:" + newState.desc + "," + getCurrentCountMessage())
                 _stateFlow.tryEmit(newState)
@@ -106,11 +162,14 @@ abstract class JdcrPlayerCore(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 super.onIsPlayingChanged(isPlaying)
                 if (isPlaying) {
+                    lastPauseEmitted = null
+                    JdcrPlayerLog.i("播放中")
                     _stateFlow.tryEmit(JdcrPlayerState.PLAYING(getCurrentMediaSource()))
-                } else {
-                    if (_exoPlayer.playbackState == Player.STATE_READY) {
-                        _stateFlow.tryEmit(JdcrPlayerState.PAUSE(getCurrentMediaSource()))
-                    }
+                } else if (_exoPlayer.playbackState == Player.STATE_READY) {
+                    val reason = buildPauseState()
+                    lastPauseEmitted = reason
+                    JdcrPlayerLog.d("停止播放了,原因:${reason.reason}")
+                    _stateFlow.tryEmit(reason)
                 }
             }
 
@@ -135,10 +194,12 @@ abstract class JdcrPlayerCore(
 
                 }
                 JdcrPlayerLog.w("播放出错:" + getCurrentResouceMessage(), playbackError)
+                lastPauseEmitted = null
                 _stateFlow.tryEmit(JdcrPlayerState.ERROR(getCurrentMediaSource(), playbackError))
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                lastPauseEmitted = null
                 mediaItem?.let {
                     JdcrPlayerLog.i("切换到新视频:" + getCurrentCountMessage())
                     _currentIndexFlow.tryEmit(_exoPlayer.currentMediaItemIndex)
@@ -152,6 +213,51 @@ abstract class JdcrPlayerCore(
             override fun onTimelineChanged(timeline: Timeline, reason: Int) {
                 if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
                     JdcrPlayerLog.d("播放列表发生变化:" + getCurrentCountMessage())
+                }
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                super.onPlayWhenReadyChanged(playWhenReady, reason)
+                lastPlayWhenReadyChangeReason = reason
+                if (playWhenReady) {
+                    lastPauseEmitted = null
+                }
+                // ExoPlayer 2.16 仅 5 种：USER_REQUEST, AUDIO_FOCUS_LOSS, AUDIO_BECOMING_NOISY, REMOTE, END_OF_MEDIA_ITEM
+                when (reason) {
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ->
+                        JdcrPlayerLog.d("playWhenReady=$playWhenReady(用户/业务请求)")
+
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> {
+                        JdcrPlayerLog.w("playWhenReady=$playWhenReady(长时失去音频焦点)")
+                    }
+
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ->
+                        JdcrPlayerLog.w("playWhenReady=$playWhenReady(即将外放，避免突然出声)")
+
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE ->
+                        JdcrPlayerLog.d("playWhenReady=$playWhenReady(远程/会话控制)")
+
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM ->
+                        JdcrPlayerLog.d("playWhenReady=$playWhenReady(当前媒体项结束)")
+
+                    else ->
+                        JdcrPlayerLog.d("playWhenReady=$playWhenReady(未知原因 reason=$reason)")
+                }
+            }
+
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                super.onPlaybackSuppressionReasonChanged(playbackSuppressionReason)
+                // 2.16 仅有 NONE 与 TRANSIENT_AUDIO_FOCUS_LOSS
+                when (playbackSuppressionReason) {
+                    Player.PLAYBACK_SUPPRESSION_REASON_NONE ->
+                        JdcrPlayerLog.d("getPlaybackSuppressionReason=NONE(不再因压制而静音)")
+
+                    Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS -> {
+                        JdcrPlayerLog.w("getPlaybackSuppressionReason=暂时失去音频焦点(仍想播但暂不出声)")
+                    }
+
+                    else ->
+                        JdcrPlayerLog.d("getPlaybackSuppressionReason=$playbackSuppressionReason")
                 }
             }
 
