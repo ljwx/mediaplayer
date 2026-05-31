@@ -22,6 +22,7 @@ import com.jdcr.jdcrmediaplayer.define.JdcrPlayerView
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayerSource
 import com.jdcr.jdcrmediaplayer.ui.theme.JdcrMediaPlayerTheme
 import com.jdcr.jdcrmediaplayer.util.JdcrPlayerLog
+import com.jdcr.kmpdatabase.JdcrDBTest
 import kotlinx.coroutines.delay
 
 private val default =
@@ -43,6 +44,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         JdcrPlayerLog.enable(true, cacheDir.absolutePath+"/log.txt")
+        JdcrDBTest.demo(this)
         setContent {
             JdcrMediaPlayerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -65,7 +67,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         delay(500)
-        startPlay(context, previewView)
+//        startPlay(context, previewView)
     }
 
     Column {

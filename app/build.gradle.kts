@@ -57,5 +57,6 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     api(project(":jdcrmediaplayer"))
+    api(project(":kmpdatabase"))
 
 }
