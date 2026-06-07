@@ -3,7 +3,6 @@ package com.jdcr.jdcrmediaplayer
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
-import android.net.Uri
 import android.os.Looper
 import androidx.annotation.MainThread
 import com.google.android.exoplayer2.ExoPlayer
@@ -14,7 +13,7 @@ import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.Timeline
 import com.google.android.exoplayer2.ui.PlayerView
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayer
-import com.jdcr.jdcrmediaplayer.define.JdcrPlayerSource
+import com.jdcr.jdcrmediaplayer.define.JdcrMediaSource
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayerView
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayerError
 import com.jdcr.jdcrmediaplayer.define.JdcrPlayerRepeatMode
@@ -33,7 +32,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import androidx.core.net.toUri
 import com.jdcr.jdcrmediaplayer.config.JdcrPlayerConfig
 
@@ -50,6 +48,11 @@ abstract class JdcrPlayerCore(
     private val rootJob = SupervisorJob()
     private var _scope: CoroutineScope =
         CoroutineScope(Dispatchers.Main.immediate + rootJob + coroutineExceptionHandler)
+
+    @Volatile
+    protected var defaultMedia: JdcrMediaSource? = null
+
+    protected var isStopped = true
 
     @SuppressLint("UnsafeOptInUsageError")
     private val _exoPlayer: ExoPlayer =
@@ -89,16 +92,16 @@ abstract class JdcrPlayerCore(
         val item = getCurrentMediaSource()
         return when {
             _exoPlayer.playbackSuppressionReason ==
-                Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS ->
+                    Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS ->
                 JdcrPlayerState.PAUSE.LOSE_FOCUS_TEMP(item)
 
             lastPlayWhenReadyChangeReason ==
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS &&
-                !_exoPlayer.playWhenReady ->
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS &&
+                    !_exoPlayer.playWhenReady ->
                 JdcrPlayerState.PAUSE.LOSE_FOCUS_LONG(item)
 
             lastPlayWhenReadyChangeReason ==
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ->
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ->
                 JdcrPlayerState.PAUSE.AUDIO_BECOMING_NOISY(item)
 
             else -> JdcrPlayerState.PAUSE.Normal(item)
@@ -111,7 +114,9 @@ abstract class JdcrPlayerCore(
             is JdcrPlayerState.PAUSE.Normal -> JdcrPlayerState.PAUSE.Normal(item)
             is JdcrPlayerState.PAUSE.LOSE_FOCUS_TEMP -> JdcrPlayerState.PAUSE.LOSE_FOCUS_TEMP(item)
             is JdcrPlayerState.PAUSE.LOSE_FOCUS_LONG -> JdcrPlayerState.PAUSE.LOSE_FOCUS_LONG(item)
-            is JdcrPlayerState.PAUSE.AUDIO_BECOMING_NOISY -> JdcrPlayerState.PAUSE.AUDIO_BECOMING_NOISY(item)
+            is JdcrPlayerState.PAUSE.AUDIO_BECOMING_NOISY -> JdcrPlayerState.PAUSE.AUDIO_BECOMING_NOISY(
+                item
+            )
         }
     }
 
@@ -156,14 +161,15 @@ abstract class JdcrPlayerCore(
                     }
                 }
                 JdcrPlayerLog.i("播放状态变更:" + newState.desc + "," + getCurrentCountMessage())
-                _stateFlow.tryEmit(newState)
+                runMain {
+                    _stateFlow.tryEmit(newState)
+                }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 super.onIsPlayingChanged(isPlaying)
                 if (isPlaying) {
                     lastPauseEmitted = null
-                    JdcrPlayerLog.i("播放中")
                     _stateFlow.tryEmit(JdcrPlayerState.PLAYING(getCurrentMediaSource()))
                 } else if (_exoPlayer.playbackState == Player.STATE_READY) {
                     val reason = buildPauseState()
@@ -212,7 +218,7 @@ abstract class JdcrPlayerCore(
 
             override fun onTimelineChanged(timeline: Timeline, reason: Int) {
                 if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
-                    JdcrPlayerLog.d("播放列表发生变化:" + getCurrentCountMessage())
+                    JdcrPlayerLog.w("\n播放列表发生变化:" + getCurrentCountMessage())
                 }
             }
 
@@ -280,12 +286,12 @@ abstract class JdcrPlayerCore(
         }
     }
 
-    protected fun source2Item(source: JdcrPlayerSource): MediaItem {
+    protected fun source2Item(source: JdcrMediaSource): MediaItem {
         val safeUri = source.uri.toUri().buildUpon().build()
         return MediaItem.Builder().setUri(safeUri).setMediaId(source.id).setTag(source).build()
     }
 
-    private inline fun <T> runMain(crossinline block: () -> T): T {
+    protected inline fun <T> runMain(crossinline block: () -> T): T {
         return if (Looper.myLooper() == Looper.getMainLooper()) {
             block()
         } else {
@@ -296,10 +302,10 @@ abstract class JdcrPlayerCore(
     }
 
     override fun addMediaSource(
-        mediaSource: JdcrPlayerSource,
+        mediaSource: JdcrMediaSource,
         index: Int?
     ) {
-        _scope.launch(Dispatchers.Main.immediate) {
+        runMain {
             if (index == null) {
                 JdcrPlayerLog.i("追加媒体文件:$mediaSource")
                 getPlayer().addMediaItem(source2Item(mediaSource))
@@ -310,64 +316,70 @@ abstract class JdcrPlayerCore(
         }
     }
 
-    override fun setCurrentSource(source: JdcrPlayerSource) {
-        _scope.launch(Dispatchers.Main.immediate) {
-            JdcrPlayerLog.i("切换媒体文件:$source")
+    override fun setCurrentSource(source: JdcrMediaSource) {
+        runMain {
+            JdcrPlayerLog.i("设置了当前媒体文件:$source")
             val mediaItem = source2Item(source)
             _exoPlayer.setMediaItem(mediaItem)
         }
     }
 
     override fun prepare() {
-        _scope.launch(Dispatchers.Main.immediate) {
+        runMain {
             _exoPlayer.prepare()
         }
     }
 
     override fun start() {
-        _scope.launch(Dispatchers.Main.immediate) {
+        runMain {
             _exoPlayer.play()
+            isStopped = false
         }
     }
 
-    override fun playIndex(index: Int) {
-        _scope.launch(Dispatchers.Main.immediate) {
+    override fun seekItemIndex(index: Int) {
+        runMain {
             _exoPlayer.seekTo(index, 0)
         }
     }
 
+    override fun seekItemLast() {
+        seekItemIndex(_exoPlayer.mediaItemCount -1)
+    }
+
     override fun pause() {
-        _scope.launch(Dispatchers.Main.immediate) {
+        runMain {
             _exoPlayer.pause()
         }
     }
 
     override fun resume() {
-        _scope.launch(Dispatchers.Main.immediate) {
+        runMain {
             _exoPlayer.play()
         }
     }
 
     override fun stop() {
-        _scope.launch(Dispatchers.Main.immediate) {
+        runMain {
+            isStopped = true
             _exoPlayer.stop()
         }
     }
 
-    override fun seekTo(positionMs: Long) {
-        _scope.launch(Dispatchers.Main.immediate) {
+    override fun seekToMs(positionMs: Long) {
+        runMain {
             _exoPlayer.seekTo(positionMs)
         }
     }
 
     override fun setVolume(volume: Float) {
-        _scope.launch(Dispatchers.Main) {
+        runMain {
             _exoPlayer.volume = volume
         }
     }
 
     override fun setRepeatMode(repeatMode: JdcrPlayerRepeatMode) {
-        _scope.launch(Dispatchers.Main) {
+        runMain {
             _exoPlayer.repeatMode = when (repeatMode) {
                 JdcrPlayerRepeatMode.RepeatNo -> Player.REPEAT_MODE_OFF
                 JdcrPlayerRepeatMode.RepeatOne -> Player.REPEAT_MODE_ONE
@@ -437,93 +449,68 @@ abstract class JdcrPlayerCore(
     }
 
     override fun next() {
-        _scope.launch(Dispatchers.Main) {
+        runMain {
             _exoPlayer.seekToNextMediaItem()
         }
     }
 
     override fun previous() {
-        _scope.launch(Dispatchers.Main) {
+        runMain {
             _exoPlayer.seekToPreviousMediaItem()
         }
     }
 
-    private fun removeMediaSourceInternal(mediaSource: JdcrPlayerSource) {
-        runMain {
-            getPlayer().apply {
-                for (i in mediaItemCount - 1 downTo 0) {
-                    if (mediaSource.id == getMediaItemAt(i).mediaId) {
-                        JdcrPlayerLog.i("player移除item:$mediaSource")
-                        removeMediaItem(i)
-                    }
+    protected fun removeMediaSourceInternal(mediaSource: JdcrMediaSource) {
+        getPlayer().apply {
+            for (i in mediaItemCount - 1 downTo 0) {
+                if (mediaSource.id == getMediaItemAt(i).mediaId) {
+                    JdcrPlayerLog.i("player移除item:$mediaSource")
+                    removeMediaItem(i)
                 }
             }
         }
     }
 
-    override fun removeMediaSource(mediaSource: JdcrPlayerSource) {
-        removeMediaSourceInternal(mediaSource)
+    override fun removeMediaSource(mediaSource: JdcrMediaSource) {
+        runMain {
+            removeMediaSourceInternal(mediaSource)
+        }
     }
 
     override fun removeMediaSource(index: Int) {
-        _scope.launch(Dispatchers.Main) {
+        runMain {
             getPlayer().removeMediaItem(index)
         }
     }
 
     @MainThread
-    override fun getCurrentMediaSource(): JdcrPlayerSource? {
-        return _exoPlayer.currentMediaItem?.localConfiguration?.tag as? JdcrPlayerSource
+    override fun getCurrentMediaSource(): JdcrMediaSource? {
+        return _exoPlayer.currentMediaItem?.localConfiguration?.tag as? JdcrMediaSource
     }
 
-    private fun handlePlayEnded() {
-        _scope.launch {
-            autoRemove()
-            autoPlayDefault()
-        }
-    }
+    protected open fun handlePlayEnded() {
 
-    private suspend fun autoRemove() {
-        withContext(Dispatchers.Main) {
-            val item = getCurrentMediaSource()
-            item?.autoPlayParams?.apply {
-                if (autoRemove == true) {
-                    JdcrPlayerLog.i("自动移除当前播放完成的媒体资源:" + getCurrentResouceMessage())
-                    removeMediaSourceInternal(item)
-                }
-            }
-        }
-    }
-
-    private suspend fun autoPlayDefault() {
-        withContext(Dispatchers.Main) {
-            if (_exoPlayer.mediaItemCount == 1) {
-                getCurrentMediaSource()?.autoPlayParams?.apply {
-                    if (isDefault == true || loop == true) {
-                        JdcrPlayerLog.i("自动重播默认视频:" + getCurrentResouceMessage())
-                        _exoPlayer.seekTo(0)
-                        _exoPlayer.play()
-                    }
-                }
-            }
-        }
     }
 
     private fun autoPlayFirstFrame() {
-        getCurrentMediaSource()?.autoPlayParams?.apply {
-            if (autoPlayFirstFrame == true) {
+        getCurrentMediaSource()?.continuedSource?.apply {
+            if (false) {
                 JdcrPlayerLog.i("首帧渲染完成,自动播放:" + getCurrentResouceMessage())
-                start()
+                getPlayer().play()
             }
         }
     }
 
-    private fun getCurrentResouceMessage(): String {
+    protected fun getCurrentResouceMessage(): String {
         return "${_exoPlayer.currentMediaItemIndex}=${getCurrentMediaSource()}"
     }
 
     private fun getCurrentCountMessage(): String {
         return "当前index:" + _exoPlayer.currentMediaItemIndex + ",总共资源:" + _exoPlayer.mediaItemCount
+    }
+
+    protected fun getCoroutine(): CoroutineScope {
+        return _scope
     }
 
     @MainThread

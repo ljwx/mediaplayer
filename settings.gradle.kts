@@ -23,4 +23,3 @@ dependencyResolutionManagement {
 rootProject.name = "JdcrMediaPlayer"
 include(":app")
 include(":jdcrmediaplayer")
-include(":kmpdatabase")

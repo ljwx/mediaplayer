@@ -15,15 +15,15 @@ interface MediaPlayerCore {
         errorPolicy: ErrorPolicy?
     ): JdcrCacheConfig
 
-    fun addMediaSource(mediaSource: JdcrPlayerSource, index: Int? = null)
+    fun addMediaSource(mediaSource: JdcrMediaSource, index: Int? = null)
 
-    fun setCurrentSource(source: JdcrPlayerSource)
+    fun setCurrentSource(source: JdcrMediaSource)
 
-    fun removeMediaSource(mediaSource: JdcrPlayerSource)
+    fun removeMediaSource(mediaSource: JdcrMediaSource)
 
     fun removeMediaSource(index: Int)
 
-    fun getCurrentMediaSource(): JdcrPlayerSource?
+    fun getCurrentMediaSource(): JdcrMediaSource?
 
     fun prepare()
 
@@ -31,7 +31,7 @@ interface MediaPlayerCore {
 
     fun setRepeatMode(repeatMode: JdcrPlayerRepeatMode)
 
-    fun seekTo(positionMs: Long)
+    fun seekToMs(positionMs: Long)
 
     fun setVolume(volume: Float)
 
@@ -73,7 +73,9 @@ interface MediaPlayer : MediaPlayerCore, MediaPlayerState {
 
 interface JdcrPlayer : MediaPlayer {
 
-    fun setPlayList(mediaSources: List<JdcrPlayerSource>, index: Int? = null)
+    fun setPlayList(mediaSources: List<JdcrMediaSource>, index: Int? = null)
+
+    fun addPlayList(mediaSources: List<JdcrMediaSource>)
 
     fun cleanPlayList()
 
@@ -83,10 +85,14 @@ interface JdcrPlayer : MediaPlayer {
 
     fun previous()
 
-    fun playIndex(index: Int)
+    fun seekItemIndex(index: Int)
+
+    fun seekItemLast()
 
     fun getPlayListSize(): Int
 
     fun getCurrentIndexFlow(): Flow<Int>
+
+    fun setDefaultSource(default: JdcrMediaSource?)
 
 }
