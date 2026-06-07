@@ -1,6 +1,8 @@
 package com.jdcr.jdcrmediaplayer
 
 import android.content.Context
+import android.widget.FrameLayout.LayoutParams
+import android.widget.ImageView
 import com.jdcr.jdcrmediaplayer.cache.JdcrCacheConfig
 import com.jdcr.jdcrmediaplayer.config.ErrorPolicy
 import com.jdcr.jdcrmediaplayer.config.JdcrPlayerConfig
@@ -16,10 +18,12 @@ import kotlinx.coroutines.withContext
 
 class JdcrMediaPlayer(
     context: Context,
-    playerView: JdcrPlayerView,
+    private val playerView: JdcrPlayerView,
     private val config: JdcrPlayerConfig = JdcrPlayerConfig.DEFAULT
 ) :
     JdcrPlayerCore(context, playerView, config) {
+
+    private var captureView: ImageView? = null
 
     override fun getCacheConfig(
         ctx: Context,
@@ -134,6 +138,37 @@ class JdcrMediaPlayer(
                 seekToMs(0)
                 getPlayer().prepare()
                 getPlayer().play()
+            }
+        }
+    }
+
+    fun capturePreviewBitmap(): android.graphics.Bitmap? {
+        return null
+    }
+
+    override fun captureStart() {
+        captureEnd()
+        playerView.post {
+            val bitmap = capturePreviewBitmap()
+            if (bitmap != null) {
+                captureView = ImageView(playerView.context).apply {
+                    setImageBitmap(bitmap)
+                    layoutParams = LayoutParams(
+                        LayoutParams.MATCH_PARENT,
+                        LayoutParams.MATCH_PARENT
+                    )
+                }
+                playerView.addView(captureView)
+            }
+        }
+    }
+
+    override fun captureEnd() {
+        playerView.post {
+            captureView?.let {
+                it.setImageDrawable(null)
+                playerView.removeView(it)
+                captureView = null
             }
         }
     }

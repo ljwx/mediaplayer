@@ -62,6 +62,10 @@ object Test {
         player.cleanPlayList()
     }
 
+    fun capture() {
+        player.captureStart()
+    }
+
     private fun switch(player: JdcrPlayer) {
         coroutine.launch {
             player.getStateFlow().collect {

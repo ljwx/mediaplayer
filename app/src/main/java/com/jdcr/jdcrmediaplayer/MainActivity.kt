@@ -88,6 +88,11 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
                 Text("清除")
             }
         }
+        Button(onClick = {
+            Test.capture()
+        }) {
+            Text("截图")
+        }
         AndroidView(factory = { context ->
             playerView
         }, update = {

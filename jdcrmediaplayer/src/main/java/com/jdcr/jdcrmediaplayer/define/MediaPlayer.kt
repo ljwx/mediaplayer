@@ -95,4 +95,8 @@ interface JdcrPlayer : MediaPlayer {
 
     fun setDefaultSource(default: JdcrMediaSource?)
 
+    fun captureStart()
+
+    fun captureEnd()
+
 }
