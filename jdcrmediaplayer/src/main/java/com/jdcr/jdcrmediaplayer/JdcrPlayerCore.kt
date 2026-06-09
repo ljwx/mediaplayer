@@ -33,7 +33,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import androidx.core.net.toUri
+import com.jdcr.jdcrbase.JdcrSafeCoroutineScope
 import com.jdcr.jdcrmediaplayer.config.JdcrPlayerConfig
+import kotlinx.coroutines.cancel
 
 abstract class JdcrPlayerCore(
     context: Context,
@@ -41,13 +43,9 @@ abstract class JdcrPlayerCore(
     private val config: JdcrPlayerConfig
 ) : JdcrPlayer {
 
-    private val coroutineExceptionHandler = CoroutineExceptionHandler { _, e ->
-        e.printStackTrace()
-        JdcrPlayerLog.e("MediaPlayer协程收到异常", e)
+    private var _scope = JdcrSafeCoroutineScope {
+        JdcrPlayerLog.e("MediaPlayer协程收到异常", it)
     }
-    private val rootJob = SupervisorJob()
-    private var _scope: CoroutineScope =
-        CoroutineScope(Dispatchers.Main.immediate + rootJob + coroutineExceptionHandler)
 
     @Volatile
     protected var defaultMedia: JdcrMediaSource? = null
@@ -516,7 +514,7 @@ abstract class JdcrPlayerCore(
     @MainThread
     override fun release() {
         JdcrPlayerLog.i("释放资源")
-        rootJob.cancelChildren()
+        _scope.cancelChildren()
         progressJob?.cancel()
         progressJob = null
         _exoPlayer.release()
@@ -526,7 +524,7 @@ abstract class JdcrPlayerCore(
     override fun onDestroy() {
         JdcrPlayerLog.w("执行销毁")
         release()
-        rootJob.cancel()
+        _scope.cancel()
     }
 
 }

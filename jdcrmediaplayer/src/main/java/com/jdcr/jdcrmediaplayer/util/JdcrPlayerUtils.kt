@@ -5,6 +5,7 @@ import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.database.StandaloneDatabaseProvider
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory
 import com.google.android.exoplayer2.source.MediaSourceFactory
+import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
 import com.google.android.exoplayer2.upstream.DefaultLoadErrorHandlingPolicy
 import com.google.android.exoplayer2.upstream.HttpDataSource
@@ -20,7 +21,7 @@ import java.net.UnknownHostException
 
 object JdcrPlayerUtils {
 
-    private val sizeMB = 1024 * 1024L
+    private val sizeMBUnit = 1024 * 1024L
 
     @Volatile
     private var defaultCache: Cache? = null
@@ -30,7 +31,7 @@ object JdcrPlayerUtils {
             synchronized(this) {
                 if (defaultCache == null) {
                     val cacheDir = File(context.applicationContext.cacheDir, cacheConfig.cacheDir)
-                    val cacheSize = cacheConfig.cacheSizeMB * sizeMB
+                    val cacheSize = cacheConfig.cacheSizeMB * sizeMBUnit
                     val cacheEvictor = LeastRecentlyUsedCacheEvictor(cacheSize)
                     val databaseProvider = StandaloneDatabaseProvider(context)
                     defaultCache = SimpleCache(cacheDir, cacheEvictor, databaseProvider)
@@ -84,10 +85,16 @@ object JdcrPlayerUtils {
             .setConnectTimeoutMs(cacheConfig.requestTimeout)
             .setReadTimeoutMs(cacheConfig.requestTimeout)
 
+        //支持 http/https/file/content/asset 等多种 scheme
+        val upstreamFactory = DefaultDataSource.Factory(
+            context.applicationContext,
+            httpDataSourceFactory
+        )
+
         // 2. 创建缓存数据源工厂，将网络数据源包装起来
         val cacheDataSourceFactory = CacheDataSource.Factory()
             .setCache(getDefaultCache(context, cacheConfig)) // 设置刚才的 Cache 实例
-            .setUpstreamDataSourceFactory(httpDataSourceFactory) // 未命中缓存时，使用网络数据源下载
+            .setUpstreamDataSourceFactory(upstreamFactory) // 未命中缓存时，使用网络数据源下载
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR) // 发生错误时忽略缓存，直接走网络
 
         val errorHandlingPolicy = getLoadErrorHandler(errorPolicy)
