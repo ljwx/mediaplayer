@@ -11,10 +11,9 @@ import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.audio.AudioAttributes
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
 import com.google.android.exoplayer2.upstream.DataSource
-import com.jdcr.jdcrbase.JdcrSafeCoroutineScope
+import com.jdcr.jdcrbase.coroutine.JdcrSafeCoroutineScope
 import com.jdcr.jdcrmediaplayer.util.JdcrPlayerLog
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch

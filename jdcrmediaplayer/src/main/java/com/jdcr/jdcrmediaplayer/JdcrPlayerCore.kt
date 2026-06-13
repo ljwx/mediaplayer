@@ -33,7 +33,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import androidx.core.net.toUri
-import com.jdcr.jdcrbase.JdcrSafeCoroutineScope
+import com.jdcr.jdcrbase.coroutine.JdcrSafeCoroutineScope
 import com.jdcr.jdcrmediaplayer.config.JdcrPlayerConfig
 import kotlinx.coroutines.cancel
 
