@@ -35,12 +35,10 @@ android {
 
 dependencies {
 
-    api("com.github.ljwx:JdcrDevBase:0.3.3-SNAPSHOT")
-
     val playerVersion = "2.16.0"
     api("com.google.android.exoplayer:exoplayer:$playerVersion")
 
-    api("com.github.ljwx.jdcrlog:jdcrlog-android:1.3.1-SNAPSHOT")
+    api(jdcr.jdcr.log)
 }
 
 afterEvaluate {
