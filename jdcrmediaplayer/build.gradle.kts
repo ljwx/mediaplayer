@@ -1,6 +1,6 @@
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
+    alias(jdcr.plugins.android.library)
+    alias(jdcr.plugins.kotlin.android)
     `maven-publish`
 }
 
@@ -35,9 +35,7 @@ android {
 
 dependencies {
 
-    val playerVersion = "2.16.0"
-    api("com.google.android.exoplayer:exoplayer:$playerVersion")
-
+    api(jdcr.android.exoplayer)
     api(jdcr.jdcr.log)
 }
 

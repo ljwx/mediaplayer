@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        JdcrPlayerLog.enable(true, cacheDir.absolutePath+"/log.txt")
+        JdcrPlayerLog.enable(true)
         setContent {
             JdcrMediaPlayerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
