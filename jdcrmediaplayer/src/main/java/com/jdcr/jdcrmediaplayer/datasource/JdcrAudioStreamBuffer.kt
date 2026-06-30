@@ -3,7 +3,7 @@ package com.jdcr.jdcrmediaplayer.datasource
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
-class JdcrStreamAudioBuffer {
+class JdcrAudioStreamBuffer {
 
     private val queue = LinkedBlockingQueue<ByteArray>()
     private var currentChunk: ByteArray? = null
